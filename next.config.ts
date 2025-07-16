@@ -1,6 +1,7 @@
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  // ❌ Removido 'output: export' para permitir Server Actions y SSR
+import withPWA from 'next-pwa';
+import type { NextConfig } from 'next';
+
+const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -18,8 +19,12 @@ const nextConfig = {
     ],
   },
   experimental: {
-    serverActions: true, // ✅ habilita Server Actions si estás usándolas
+    serverActions: true,
   },
 };
 
-module.exports = nextConfig;
+export default withPWA({
+  dest: 'public',
+  register: true,
+  skipWaiting: true,
+})(nextConfig);
