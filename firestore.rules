@@ -1,0 +1,80 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isUser(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isTeamOwner(teamId) {
+      return isSignedIn() && get(/databases/$(database)/documents/teams/$(teamId)).data.ownerId == request.auth.uid;
+    }
+
+    // users can manage their own settings
+    // team owners can update teamId for other users
+    match /userSettings/{userId} {
+      allow read: if isSignedIn();
+      
+      allow write: if isUser(userId) ||
+                   (
+                     request.resource.data.keys().hasOnly(['teamId']) &&
+                     (isTeamOwner(request.resource.data.teamId) || isTeamOwner(resource.data.teamId))
+                   );
+    }
+
+    // Team data can be read by its members and updated by its owner
+    match /teams/{teamId} {
+      allow read: if isSignedIn() &&
+                  resource.data.members != null &&
+                  resource.data.members[request.auth.uid] == true;
+
+      allow update: if isTeamOwner(teamId);
+
+      allow create: if isUser(request.resource.data.ownerId);
+    }
+
+    // users can manage their own clients, or team clients if they are part of the team
+    match /clients/{clientId} {
+      function isClientOwner() {
+        return isUser(resource.data.userId);
+      }
+
+      function isClientTeamMember() {
+        return isSignedIn() &&
+               resource.data.teamId != null &&
+               get(/databases/$(database)/documents/userSettings/$(request.auth.uid)).data.teamId == resource.data.teamId;
+      }
+
+      allow read, write: if isClientOwner() || isClientTeamMember();
+      allow create: if isUser(request.resource.data.userId);
+    }
+
+    // Mail collection for sending emails
+    match /mail/{docId} {
+      allow create: if isSignedIn();
+    }
+
+    // Feedback collection for user submissions
+    match /feedback/{docId} {
+      allow create: if isSignedIn();
+      allow read: if get(/databases/$(database)/documents/userSettings/$(request.auth.uid)).data.email == "cristianmupe2021@gmail.com";
+    }
+
+    // Notes are subcollections of clients
+    match /clients/{clientId}/notes/{noteId} {
+      allow read, write, delete: if
+        get(/databases/$(database)/documents/clients/$(clientId)).data.userId == request.auth.uid ||
+        (
+          get(/databases/$(database)/documents/clients/$(clientId)).data.teamId != null &&
+          get(/databases/$(database)/documents/userSettings/$(request.auth.uid)).data.teamId ==
+            get(/databases/$(database)/documents/clients/$(clientId)).data.teamId
+        );
+    }
+  }
+}
